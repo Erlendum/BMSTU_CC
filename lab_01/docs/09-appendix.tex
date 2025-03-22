@@ -1,0 +1,642 @@
+\begin{appendices}
+	\chapter{}\label{app1}
+	\begin{lstlisting}[caption=Модуль infixToPostfix, extendedchars=\true]
+package infixToPostix
+
+import "strings"
+
+const (
+maxPriority = 4
+)
+
+func fillConcatenateChars(infix string) string {
+	var result strings.Builder
+	n := len(infix)
+	
+	for i := 0; i < n; i++ {
+		result.WriteByte(infix[i])
+		
+		if i+1 < n && shouldAddConcatenateChar(infix[i], infix[i+1]) {
+			result.WriteByte('.')
+		}
+	}
+	
+	return result.String()
+}
+
+func shouldAddConcatenateChar(a, b byte) bool {
+	return (isLetterOrDigit(a) && isLetterOrDigit(b)) ||
+	(isLetterOrDigit(a) && b == '(') ||
+	(a == ')' && isLetterOrDigit(b)) ||
+	((a == '*' || a == '+') && (isLetterOrDigit(b) || b == '('))
+}
+
+func isLetterOrDigit(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+var specialCharsPriorityMap = map[rune]int{
+	'(': 1,
+	'|': 2,
+	'.': 3,
+	'?': 4,
+	'*': 4,
+	'+': 4,
+}
+
+func priorityOf(r rune) int {
+	if priority, ok := specialCharsPriorityMap[r]; ok {
+		return priority
+	}
+	return maxPriority + 1
+}
+
+func Transform(infix string) string {
+	infix = fillConcatenateChars(infix)
+	
+	postfix := []rune{}
+	stack := []rune{}
+	
+	for _, r := range infix {
+		switch r {
+			case '(':
+			stack = append(stack, r)
+			case ')':
+			for len(stack) > 0 && stack[len(stack)-1] != '(' {
+				postfix = append(postfix, stack[len(stack)-1])
+				stack = stack[:len(stack)-1]
+			}
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			default:
+			for len(stack) > 0 && priorityOf(stack[len(stack)-1]) >= priorityOf(r) {
+				postfix = append(postfix, stack[len(stack)-1])
+				stack = stack[:len(stack)-1]
+			}
+			stack = append(stack, r)
+		}
+		
+	}
+	
+	for len(stack) > 0 {
+		postfix = append(postfix, stack[len(stack)-1])
+		stack = stack[:len(stack)-1]
+	}
+	
+	return string(postfix)
+}
+
+	\end{lstlisting}
+	
+	
+		\begin{lstlisting}[caption=Модуль NFA, extendedchars=\true]
+package nfa
+
+import (
+"fmt"
+"sort"
+)
+
+const EPS = 'eps'
+
+type State struct {
+	ID          int
+	Transitions map[rune][]*State
+	IsFinal     bool
+}
+
+type NFA struct {
+	Start       *State
+	End         *State
+	StartStates []*State
+}
+
+func (a *NFA) ExtractAlphabet() []rune {
+	alphabetMap := make(map[rune]bool)
+	
+	var traverse func(state *State)
+	traverse = func(state *State) {
+		for symbol := range state.Transitions {
+			if symbol != EPS {
+				alphabetMap[symbol] = true
+			}
+		}
+	}
+	
+	visited := make(map[int]bool)
+	stack := []*State{a.Start}
+	stack = append(stack, a.StartStates...)
+	
+	for len(stack) > 0 {
+		state := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		
+		if state == nil {
+			continue
+		}
+		
+		if visited[state.ID] {
+			continue
+		}
+		visited[state.ID] = true
+		
+		traverse(state)
+		
+		for _, nextStates := range state.Transitions {
+			for _, nextState := range nextStates {
+				stack = append(stack, nextState)
+			}
+		}
+	}
+	
+	alphabet := make([]rune, 0, len(alphabetMap))
+	for symbol := range alphabetMap {
+		alphabet = append(alphabet, symbol)
+	}
+	
+	sort.Slice(alphabet, func(i, j int) bool {
+		return alphabet[i] < alphabet[j]
+	})
+	
+	return alphabet
+}
+
+func NewState(id int) *State {
+	return &State{
+		ID:          id,
+		Transitions: make(map[rune][]*State),
+	}
+}
+
+func New(start, end *State) *NFA {
+	return &NFA{Start: start, End: end, StartStates: []*State{}}
+}
+
+func Build(postfix string) *NFA {
+	stack := []*NFA{}
+	stateID := 0
+	
+	for _, char := range postfix {
+		switch char {
+			case '.':
+			nfa2 := stack[len(stack)-1]
+			nfa1 := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			
+			nfa1.End.Transitions[EPS] = append(nfa1.End.Transitions[EPS], nfa2.Start)
+			
+			stack = append(stack, New(nfa1.Start, nfa2.End))
+			case '|':
+			nfa2 := stack[len(stack)-1]
+			nfa1 := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			
+			start := NewState(stateID)
+			stateID++
+			end := NewState(stateID)
+			stateID++
+			
+			start.Transitions[EPS] = append(start.Transitions[EPS], nfa1.Start, nfa2.Start)
+			
+			nfa1.End.Transitions[EPS] = append(nfa1.End.Transitions[EPS], end)
+			nfa2.End.Transitions[EPS] = append(nfa2.End.Transitions[EPS], end)
+			
+			stack = append(stack, New(start, end))
+			case '?':
+			nfa := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			
+			start := NewState(stateID)
+			stateID++
+			end := NewState(stateID)
+			stateID++
+			
+			start.Transitions[EPS] = append(start.Transitions[EPS], nfa.Start, end)
+			nfa.End.Transitions[EPS] = append(nfa.End.Transitions[EPS], end)
+			
+			stack = append(stack, New(start, end))
+			case '*':
+			nfa := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			
+			start := NewState(stateID)
+			stateID++
+			end := NewState(stateID)
+			stateID++
+			
+			start.Transitions[EPS] = append(start.Transitions[EPS], nfa.Start, end)
+			nfa.End.Transitions[EPS] = append(nfa.End.Transitions[EPS], nfa.Start)
+			nfa.End.Transitions[EPS] = append(nfa.End.Transitions[EPS], end)
+			
+			stack = append(stack, New(start, end))
+			case '+':
+			nfa := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			
+			start := NewState(stateID)
+			stateID++
+			end := NewState(stateID)
+			stateID++
+			
+			start.Transitions[EPS] = append(start.Transitions[EPS], nfa.Start)
+			nfa.End.Transitions[EPS] = append(nfa.End.Transitions[EPS], nfa.Start)
+			nfa.End.Transitions[EPS] = append(nfa.End.Transitions[EPS], end)
+			
+			stack = append(stack, New(start, end))
+			default:
+			start := NewState(stateID)
+			stateID++
+			end := NewState(stateID)
+			stateID++
+			
+			start.Transitions[char] = append(start.Transitions[char], end)
+			stack = append(stack, New(start, end))
+		}
+	}
+	
+	stack[0].StartStates = append(stack[0].StartStates, stack[0].Start)
+	stack[0].End.IsFinal = true
+	return stack[0]
+}
+
+func (a *NFA) ToGraphviz() string {
+	graph := "digraph NFA {\n"
+		graph += "  rankdir=LR;\n"
+		graph += "  node [shape = circle];\n"
+		
+		graph += "  start [shape = point];\n"
+		graph += fmt.Sprintf("  start -> %d;\n", a.Start.ID)
+		
+		graph += fmt.Sprintf("  %d [shape = doublecircle];\n", a.End.ID)
+		
+		visited := make(map[*State]bool)
+		stack := []*State{a.Start}
+		
+		for len(stack) > 0 {
+			state := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			
+			if visited[state] {
+				continue
+			}
+			visited[state] = true
+			
+			graph += fmt.Sprintf("  %d [label=\"%d\"];\n", state.ID, state.ID)
+			
+			for char, nextStates := range state.Transitions {
+				for _, nextState := range nextStates {
+					graph += fmt.Sprintf("  %d -> %d [label=\"%c\"];\n", state.ID, nextState.ID, char)
+					stack = append(stack, nextState)
+				}
+			}
+		}
+		
+		graph += "}\n"
+	return graph
+}
+
+func (a *NFA) StateByID(stateID int) *State {
+	visited := make(map[int]bool)
+	stack := []*State{a.Start}
+	stack = append(stack, a.StartStates...)
+	
+	for len(stack) > 0 {
+		state := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		
+		if visited[state.ID] {
+			continue
+		}
+		visited[state.ID] = true
+		
+		if state.ID == stateID {
+			return state
+		}
+		
+		for _, nextStates := range state.Transitions {
+			for _, nextState := range nextStates {
+				stack = append(stack, nextState)
+			}
+		}
+	}
+	
+	return nil
+}
+
+func (a *NFA) IsFinalState(states map[int]bool) bool {
+	for stateID := range states {
+		state := a.StateByID(stateID)
+		if state.IsFinal {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *NFA) EpsilonClosure(states map[int]bool) map[int]bool {
+	closure := make(map[int]bool)
+	for stateID := range states {
+		closure[stateID] = true
+	}
+	
+	stack := make([]int, 0, len(states))
+	for stateID := range states {
+		stack = append(stack, stateID)
+	}
+	
+	for len(stack) > 0 {
+		currentStateID := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		
+		state := a.StateByID(currentStateID)
+		for _, nextState := range state.Transitions[EPS] {
+			if !closure[nextState.ID] {
+				closure[nextState.ID] = true
+				stack = append(stack, nextState.ID)
+			}
+		}
+	}
+	
+	return closure
+}
+			
+		\end{lstlisting}
+		
+		
+			\begin{lstlisting}[caption=Модуль DFA, extendedchars=\true]
+package dfa
+
+import (
+"fmt"
+
+nfa_pkg "github.com/Erlendum/BMSTU_CC/internal/nfa"
+)
+
+type State struct {
+	id          int
+	nfaStates   map[int]bool
+	transitions map[rune]int
+	isFinal     bool
+}
+
+type DFA struct {
+	start    int
+	states   map[int]*State
+	alphabet []rune
+}
+
+func NewState(id int, nfaStates map[int]bool, isFinal bool) *State {
+	return &State{
+		id:          id,
+		nfaStates:   nfaStates,
+		transitions: make(map[rune]int),
+		isFinal:     isFinal,
+	}
+}
+
+func Build(nfa *nfa_pkg.NFA) *DFA {
+	alphabet := nfa.ExtractAlphabet()
+	
+	dfa := &DFA{
+		states:   make(map[int]*State),
+		alphabet: alphabet,
+	}
+	
+	startedStates := make(map[int]bool)
+	for _, state := range nfa.StartStates {
+		startedStates[state.ID] = true
+	}
+	
+	startNFAStates := nfa.EpsilonClosure(startedStates)
+	dfa.start = 0
+	dfa.states[0] = NewState(0, startNFAStates, nfa.IsFinalState(startNFAStates))
+	
+	queue := []int{0}
+	processed := make(map[int]bool)
+	
+	stateID := 1
+	
+	for len(queue) > 0 {
+		currentStateID := queue[0]
+		queue = queue[1:]
+		
+		if processed[currentStateID] {
+			continue
+		}
+		processed[currentStateID] = true
+		
+		currentState := dfa.states[currentStateID]
+		
+		for _, symbol := range alphabet {
+			nextNFAStates := make(map[int]bool)
+			for nfaStateID := range currentState.nfaStates {
+				state := nfa.StateByID(nfaStateID)
+				for _, nextState := range state.Transitions[symbol] {
+					nextNFAStates[nextState.ID] = true
+				}
+			}
+			
+			nextNFAStates = nfa.EpsilonClosure(nextNFAStates)
+			
+			if len(nextNFAStates) == 0 {
+				continue
+			}
+			
+			found := false
+			var nextStateID int
+			for id, state := range dfa.states {
+				if statesEqual(state.nfaStates, nextNFAStates) {
+					found = true
+					nextStateID = id
+					break
+				}
+			}
+			
+			if !found {
+				nextStateID = stateID
+				dfa.states[nextStateID] = NewState(nextStateID, nextNFAStates, nfa.IsFinalState(nextNFAStates))
+				queue = append(queue, nextStateID)
+				stateID++
+			}
+			
+			currentState.transitions[symbol] = nextStateID
+		}
+	}
+	
+	return dfa
+}
+
+func statesEqual(a, b map[int]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for stateID := range a {
+		if !b[stateID] {
+			return false
+		}
+	}
+	return true
+}
+
+func (dfa *DFA) ToGraphviz() string {
+	graph := "digraph DFA {\n"
+		graph += "  rankdir=LR;\n"
+		graph += "  node [shape = circle];\n"
+		
+		graph += fmt.Sprintf("  start [shape = point];\n")
+		graph += fmt.Sprintf("  start -> %d;\n", dfa.start)
+		
+		for _, state := range dfa.states {
+			if state.isFinal {
+				graph += fmt.Sprintf("  %d [shape = doublecircle];\n", state.id)
+			} else {
+				graph += fmt.Sprintf("  %d [shape = circle];\n", state.id)
+			}
+		}
+		
+		for _, state := range dfa.states {
+			for symbol, nextStateID := range state.transitions {
+				graph += fmt.Sprintf("  %d -> %d [label=\"%c\"];\n", state.id, nextStateID, symbol)
+			}
+		}
+		
+		graph += "}\n"
+	return graph
+}
+
+func (dfa *DFA) Minimize() *DFA {
+	invertedNFA := dfa.invert()
+	intermediateDFA := Build(invertedNFA)
+	invertedNFA2 := intermediateDFA.invert()
+	minimizedDFA := Build(invertedNFA2)
+	return minimizedDFA
+}
+
+func (dfa *DFA) invert() *nfa_pkg.NFA {
+	stateMap := make(map[int]*nfa_pkg.State)
+	startStates := make([]*nfa_pkg.State, 0)
+	startRandomID := 0
+	for id, state := range dfa.states {
+		stateMap[id] = &nfa_pkg.State{ID: id, Transitions: map[rune][]*nfa_pkg.State{}}
+		if state.isFinal {
+			startRandomID = state.id
+			startStates = append(startStates, stateMap[id])
+		}
+	}
+	
+	stateMap[dfa.start].IsFinal = true
+	
+	for fromID, state := range dfa.states {
+		for symbol, toID := range state.transitions {
+			if _, exists := stateMap[toID]; !exists {
+				stateMap[toID] = &nfa_pkg.State{ID: toID, Transitions: map[rune][]*nfa_pkg.State{}}
+			}
+			stateMap[toID].Transitions[symbol] = append(stateMap[toID].Transitions[symbol], stateMap[fromID])
+		}
+	}
+	
+	nfa := &nfa_pkg.NFA{
+		Start:       stateMap[startRandomID],
+		End:         stateMap[dfa.start],
+		StartStates: startStates,
+	}
+	
+	return nfa
+}
+
+func (dfa *DFA) SimulateDFA(input string) ([]string, bool) {
+	var steps []string
+	currentStateID := dfa.start
+	currentState := dfa.states[currentStateID]
+	
+	steps = append(steps, dfa.ToGraphvizWithHighlight(currentStateID, "Start"))
+	
+	for i, symbol := range input {
+		if nextStateID, exists := currentState.transitions[symbol]; exists {
+			currentStateID = nextStateID
+			currentState = dfa.states[currentStateID]
+			steps = append(steps, dfa.ToGraphvizWithHighlight(currentStateID, fmt.Sprintf("Step %d: Symbol '%c'", i+1, symbol)))
+		} else {
+			steps = append(steps, dfa.ToGraphvizWithError(currentStateID, symbol))
+			return steps, false
+		}
+	}
+	
+	isAccepted := currentState.isFinal
+	if isAccepted {
+		steps = append(steps, dfa.ToGraphvizWithHighlight(currentStateID, "Accepted"))
+	} else {
+		steps = append(steps, dfa.ToGraphvizWithHighlight(currentStateID, "Rejected"))
+	}
+	
+	return steps, isAccepted
+}
+
+func (dfa *DFA) ToGraphvizWithHighlight(currentStateID int, description string) string {
+	graph := "digraph DFA {\n"
+		graph += "  rankdir=LR;\n"
+		graph += "  node [shape = circle];\n"
+		
+		graph += fmt.Sprintf("  start [shape = point];\n")
+		graph += fmt.Sprintf("  start -> %d;\n", dfa.start)
+		
+		for _, state := range dfa.states {
+			if state.isFinal {
+				graph += fmt.Sprintf("  %d [shape = doublecircle];\n", state.id)
+			} else {
+				graph += fmt.Sprintf("  %d [shape = circle];\n", state.id)
+			}
+		}
+		
+		graph += fmt.Sprintf("  %d [color=red, fontcolor=red];\n", currentStateID)
+		
+		graph += fmt.Sprintf("  labelloc=\"t\";\n")
+		graph += fmt.Sprintf("  label=\"%s\";\n", description)
+		
+		for _, state := range dfa.states {
+			for symbol, nextStateID := range state.transitions {
+				graph += fmt.Sprintf("  %d -> %d [label=\"%c\"];\n", state.id, nextStateID, symbol)
+			}
+		}
+		
+		graph += "}\n"
+	return graph
+}
+
+func (dfa *DFA) ToGraphvizWithError(currentStateID int, symbol rune) string {
+	graph := "digraph DFA {\n"
+		graph += "  rankdir=LR;\n"
+		graph += "  node [shape = circle];\n"
+		
+		graph += fmt.Sprintf("  start [shape = point];\n")
+		graph += fmt.Sprintf("  start -> %d;\n", dfa.start)
+		
+		for _, state := range dfa.states {
+			if state.isFinal {
+				graph += fmt.Sprintf("  %d [shape = doublecircle];\n", state.id)
+			} else {
+				graph += fmt.Sprintf("  %d [shape = circle];\n", state.id)
+			}
+		}
+		
+		graph += fmt.Sprintf("  %d [color=red, fontcolor=red];\n", currentStateID)
+		graph += fmt.Sprintf("  %d -> error [label=\"%c\"];\n", currentStateID, symbol)
+		graph += "  error [shape=box, color=red, fontcolor=red];\n"
+		
+		graph += fmt.Sprintf("  labelloc=\"t\";\n")
+		graph += fmt.Sprintf("  label=\"Error: No transition for symbol '%c'\";\n", symbol)
+		
+		for _, state := range dfa.states {
+			for symbol, nextStateID := range state.transitions {
+				graph += fmt.Sprintf("  %d -> %d [label=\"%c\"];\n", state.id, nextStateID, symbol)
+			}
+		}
+		
+		graph += "}\n"
+	return graph
+}
+
+		\end{lstlisting}
+		
+\end{appendices}
