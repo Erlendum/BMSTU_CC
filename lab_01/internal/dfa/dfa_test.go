@@ -3,7 +3,7 @@ package dfa
 import (
 	"testing"
 
-	nfa_pkg "github.com/Erlendum/BMSTU_CC/internal/nfa"
+	nfa_pkg "github.com/Erlendum/BMSTU_CC/lab_01/internal/nfa"
 )
 
 type testCase struct {

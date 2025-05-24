@@ -3,7 +3,7 @@ package dfa
 import (
 	"fmt"
 
-	nfa_pkg "github.com/Erlendum/BMSTU_CC/internal/nfa"
+	nfa_pkg "github.com/Erlendum/BMSTU_CC/lab_01/internal/nfa"
 )
 
 type State struct {

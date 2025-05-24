@@ -11,6 +11,7 @@
 # Test binary, built with `go test -c`
 *.test
 
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
@@ -23,3 +24,51 @@ go.work.sum
 
 # env file
 .env
+
+*.acn
+*.acr
+*.alg
+*.aux
+*.bak
+*.bbl
+*.bcf
+*.blg
+*.brf
+*.bst
+*.dvi
+*.fdb_latexmk
+*.fls
+*.glg
+*.glo
+*.gls
+*.idx
+*.ilg
+*.ind
+*.ist
+*.lof
+*.log
+*.lol
+*.lot
+*.maf
+*.mtc
+*.mtc1
+*.nav
+*.nlo
+*.nls
+*.out
+*.pdf
+*.pyg
+*.run.xml
+*.snm
+*.synctex.gz
+*.tex.backup
+*.tex~
+*.thm
+*.toc
+*.vrb
+*.xdy
+*.xml
+*blx.bib
+.bak
+.mtc
+build/

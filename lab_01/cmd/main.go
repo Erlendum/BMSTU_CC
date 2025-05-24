@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Erlendum/BMSTU_CC/internal/dfa"
-	infixToPostix "github.com/Erlendum/BMSTU_CC/internal/infixToPostfix"
-	"github.com/Erlendum/BMSTU_CC/internal/nfa"
+	"github.com/Erlendum/BMSTU_CC/lab_01/internal/dfa"
+	infixToPostix "github.com/Erlendum/BMSTU_CC/lab_01/internal/infixToPostfix"
+	"github.com/Erlendum/BMSTU_CC/lab_01/internal/nfa"
 )
 
 const (
