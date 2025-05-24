@@ -1,0 +1,12 @@
+3
+A B S
+2
+a b
+6
+A -> a
+A -> b
+B -> a
+B -> b
+S -> a
+S -> b
+S

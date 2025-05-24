@@ -1,0 +1,60 @@
+\chapter*{РЕЗУЛЬТАТЫ ВЫПОЛНЕНИЯ ПРОГРАММЫ}
+
+\begin{lstlisting}[caption={Устранение левой рекурсии}]
+-- in
+
+2
+S A
+4
+a b c d
+5
+S -> Aa
+S -> b
+A -> Ac
+A -> Sd
+A -> eps
+S
+
+-- out
+2
+A S
+4
+a b c d
+4
+A -> Ac
+A -> Sd
+S -> Aa
+S -> b
+S
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Устранение цепных правил}]
+-- in
+	
+3
+S A B
+2
+a b
+5
+S -> A
+A -> B
+B -> a
+B -> b
+A -> a
+S
+
+	
+-- out
+3
+A B S
+2
+a b
+6
+A -> a
+A -> b
+B -> a
+B -> b
+S -> a
+S -> b
+S
+\end{lstlisting}

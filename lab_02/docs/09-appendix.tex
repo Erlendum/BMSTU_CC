@@ -1,0 +1,828 @@
+\begin{appendices}
+	\chapter{}\label{app1}
+	\begin{lstlisting}[caption=Модуль grammar, extendedchars=\true]
+package grammar
+
+import (
+"fmt"
+"sort"
+"strconv"
+"strings"
+)
+
+type Grammar struct {
+	NonTerminals    []string
+	Terminals       []string
+	ProductionRules []ProductionRule
+	StartSymbol     string
+	productionMap   map[string][]string
+}
+
+type ProductionRule struct {
+	Left  string
+	Right string
+}
+
+func NewGrammarFromString(input string) (*Grammar, error) {
+	lines := strings.Split(strings.TrimSpace(input), "\n")
+	if len(lines) < 7 {
+		return nil, fmt.Errorf("%d)", len(lines))
+	}
+	
+	var cleanLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			cleanLines = append(cleanLines, trimmed)
+		}
+	}
+	
+	g := &Grammar{productionMap: make(map[string][]string)}
+	
+	nonTerminalCount, err := strconv.Atoi(cleanLines[0])
+	if err != nil {
+		return nil, fmt.Errorf("", err)
+	}
+	
+	g.NonTerminals = strings.Fields(cleanLines[1])
+	if len(g.NonTerminals) != nonTerminalCount {
+		return nil, fmt.Errorf("",
+		nonTerminalCount, len(g.NonTerminals))
+	}
+	
+	terminalCount, err := strconv.Atoi(cleanLines[2])
+	if err != nil {
+		return nil, fmt.Errorf("", err)
+	}
+	
+	g.Terminals = strings.Fields(cleanLines[3])
+	if len(g.Terminals) != terminalCount {
+		return nil, fmt.Errorf("",
+		terminalCount, len(g.Terminals))
+	}
+	
+	ruleCount, err := strconv.Atoi(cleanLines[4])
+	if err != nil {
+		return nil, fmt.Errorf("%v", err)
+	}
+	
+	ruleStart := 5
+	ruleEnd := ruleStart + ruleCount
+	if ruleEnd > len(cleanLines)-1 {
+		return nil, fmt.Errorf("",
+		ruleCount, len(cleanLines)-ruleStart-1)
+	}
+	
+	for i := ruleStart; i < ruleEnd; i++ {
+		parts := strings.Split(cleanLines[i], "->")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("", cleanLines[i])
+		}
+		rule := ProductionRule{
+			Left:  strings.TrimSpace(parts[0]),
+			Right: strings.TrimSpace(parts[1]),
+		}
+		g.ProductionRules = append(g.ProductionRules, rule)
+		g.productionMap[rule.Left] = append(g.productionMap[rule.Left], rule.Right)
+	}
+	
+	g.StartSymbol = strings.TrimSpace(cleanLines[ruleEnd])
+	found := false
+	for _, nt := range g.NonTerminals {
+		if nt == g.StartSymbol {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("", g.StartSymbol)
+	}
+	
+	return g, nil
+}
+
+func (g *Grammar) ToString() string {
+	var builder strings.Builder
+	
+	sortedNonTerminals := append([]string{}, g.NonTerminals...)
+	sort.Strings(sortedNonTerminals)
+	builder.WriteString(fmt.Sprintf("%d\n", len(sortedNonTerminals)))
+	builder.WriteString(strings.Join(sortedNonTerminals, " ") + "\n")
+	
+	sortedTerminals := append([]string{}, g.Terminals...)
+	sort.Strings(sortedTerminals)
+	builder.WriteString(fmt.Sprintf("%d\n", len(sortedTerminals)))
+	builder.WriteString(strings.Join(sortedTerminals, " ") + "\n")
+	
+	rulesCopy := append([]ProductionRule{}, g.ProductionRules...)
+	sort.Slice(rulesCopy, func(i, j int) bool {
+		if rulesCopy[i].Left == rulesCopy[j].Left {
+			return rulesCopy[i].Right < rulesCopy[j].Right
+		}
+		return rulesCopy[i].Left < rulesCopy[j].Left
+	})
+	
+	builder.WriteString(fmt.Sprintf("%d\n", len(rulesCopy)))
+	for _, rule := range rulesCopy {
+		builder.WriteString(fmt.Sprintf("%s -> %s\n", rule.Left, rule.Right))
+	}
+	
+	builder.WriteString(g.StartSymbol + "\n")
+	
+	return builder.String()
+}
+
+func (g *Grammar) GetProductionsFor(nonTerminal string) []string {
+	return g.productionMap[nonTerminal]
+}
+
+func (g *Grammar) IsNonTerminal(symbol string) bool {
+	for _, nt := range g.NonTerminals {
+		if nt == symbol {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Grammar) IsTerminal(symbol string) bool {
+	for _, t := range g.Terminals {
+		if t == symbol {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Grammar) EliminateLeftRecursion() error {
+	orderedNT := g.NonTerminals
+	
+	for i, Ai := range orderedNT {
+		var productionsToAdd []ProductionRule
+		var productionsToRemove []ProductionRule
+		
+		for _, rule := range g.ProductionRules {
+			if rule.Left != Ai {
+				continue
+			}
+			for j := 0; j < i; j++ {
+				Aj := orderedNT[j]
+				if strings.HasPrefix(rule.Right, Aj) {
+					gamma := rule.Right[len(Aj):]
+					for _, ajRule := range g.GetProductionsFor(Aj) {
+						newRight := ajRule + gamma
+						productionsToAdd = append(productionsToAdd, ProductionRule{
+							Left:  Ai,
+							Right: newRight,
+						})
+					}
+					productionsToRemove = append(productionsToRemove, rule)
+					break
+				}
+			}
+		}
+		
+		g.removeProductions(productionsToRemove)
+		g.ProductionRules = append(g.ProductionRules, productionsToAdd...)
+		g.rebuildProductionMap()
+		
+		if err := g.eliminateImmediateLeftRecursion(Ai); err != nil {
+			return fmt.Errorf("", Ai, err)
+		}
+	}
+	
+	return nil
+}
+
+func (g *Grammar) eliminateImmediateLeftRecursion(A string) error {
+	var recursiveRules []ProductionRule
+	var nonRecursiveRules []ProductionRule
+	
+	for _, rule := range g.GetProductionsFor(A) {
+		if strings.HasPrefix(rule, A) {
+			recursiveRules = append(recursiveRules, ProductionRule{
+				Left:  A,
+				Right: rule,
+			})
+		} else {
+			nonRecursiveRules = append(nonRecursiveRules, ProductionRule{
+				Left:  A,
+				Right: rule,
+			})
+		}
+	}
+	
+	if len(recursiveRules) == 0 {
+		return nil
+	}
+	
+	newNonTerminal := A + "'"
+	g.NonTerminals = append(g.NonTerminals, newNonTerminal)
+	
+	var newARules []ProductionRule
+	for _, rule := range nonRecursiveRules {
+		if rule.Right == "" {
+			newARules = append(newARules, ProductionRule{
+				Left:  A,
+				Right: newNonTerminal,
+			})
+		} else {
+			newARules = append(newARules, ProductionRule{
+				Left:  A,
+				Right: rule.Right + newNonTerminal,
+			})
+		}
+	}
+	
+	var newAPrimeRules []ProductionRule
+	for _, rule := range recursiveRules {
+		alpha := rule.Right[len(A):]
+		newAPrimeRules = append(newAPrimeRules, ProductionRule{
+			Left:  newNonTerminal,
+			Right: alpha + newNonTerminal,
+		})
+	}
+	newAPrimeRules = append(newAPrimeRules, ProductionRule{
+		Left:  newNonTerminal,
+		Right: "",
+	})
+	
+	g.removeProductionsFor(A)
+	g.ProductionRules = append(g.ProductionRules, newARules...)
+	g.ProductionRules = append(g.ProductionRules, newAPrimeRules...)
+	g.rebuildProductionMap()
+	
+	return nil
+}
+
+func (g *Grammar) removeProductions(rules []ProductionRule) {
+	for _, rule := range rules {
+		for i, r := range g.ProductionRules {
+			if r.Left == rule.Left && r.Right == rule.Right {
+				g.ProductionRules = append(g.ProductionRules[:i], g.ProductionRules[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (g *Grammar) removeProductionsFor(nt string) {
+	var newRules []ProductionRule
+	for _, rule := range g.ProductionRules {
+		if rule.Left != nt {
+			newRules = append(newRules, rule)
+		}
+	}
+	g.ProductionRules = newRules
+}
+
+func (g *Grammar) rebuildProductionMap() {
+	g.productionMap = make(map[string][]string)
+	for _, rule := range g.ProductionRules {
+		g.productionMap[rule.Left] = append(g.productionMap[rule.Left], rule.Right)
+	}
+}
+func (g *Grammar) LeftFactor() error {
+	changed := true
+	
+	for changed {
+		changed = false
+		
+		for _, nt := range g.NonTerminals {
+			productions := g.GetProductionsFor(nt)
+			if len(productions) < 2 {
+				continue
+			}
+			
+			prefixGroups := groupByPrefix(productions)
+			for prefix, group := range prefixGroups {
+				if prefix == "" || len(group) < 2 {
+					continue
+				}
+				
+				newNT := nt + "'"
+				for contains(g.NonTerminals, newNT) {
+					newNT += "'"
+				}
+				g.NonTerminals = append(g.NonTerminals, newNT)
+				
+				g.removeProductionsFor(nt)
+				
+				g.ProductionRules = append(g.ProductionRules, ProductionRule{
+					Left:  nt,
+					Right: prefix + newNT,
+				})
+				
+				for _, prod := range group {
+					suffix := prod[len(prefix):]
+					if suffix == "" {
+						suffix = ""
+					}
+					g.ProductionRules = append(g.ProductionRules, ProductionRule{
+						Left:  newNT,
+						Right: suffix,
+					})
+				}
+				
+				for _, prod := range productions {
+					if !strings.HasPrefix(prod, prefix) {
+						g.ProductionRules = append(g.ProductionRules, ProductionRule{
+							Left:  nt,
+							Right: prod,
+						})
+					}
+				}
+				
+				changed = true
+				break
+			}
+			if changed {
+				g.rebuildProductionMap()
+				break
+			}
+		}
+	}
+	
+	return nil
+}
+
+func groupByPrefix(productions []string) map[string][]string {
+	prefixGroups := make(map[string][]string)
+	used := make(map[string]bool)
+	
+	for i := 0; i < len(productions); i++ {
+		for j := i + 1; j < len(productions); j++ {
+			p1 := productions[i]
+			p2 := productions[j]
+			prefix := commonPrefix(p1, p2)
+			if len(prefix) > 0 && !used[prefix] {
+				prefixGroups[prefix] = append(prefixGroups[prefix], p1)
+				prefixGroups[prefix] = append(prefixGroups[prefix], p2)
+				used[prefix] = true
+			}
+		}
+	}
+	
+	for k, v := range prefixGroups {
+		prefixGroups[k] = unique(v)
+		sort.Strings(prefixGroups[k])
+	}
+	
+	return prefixGroups
+}
+
+func commonPrefix(a, b string) string {
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
+}
+
+func unique(slice []string) []string {
+	seen := make(map[string]struct{})
+	var result []string
+	for _, val := range slice {
+		if _, ok := seen[val]; !ok {
+			seen[val] = struct{}{}
+			result = append(result, val)
+		}
+	}
+	return result
+}
+
+func contains(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Grammar) EliminateChainRules() error {
+	Nsets := make(map[string]map[string]bool)
+	
+	for _, A := range g.NonTerminals {
+		Nprev := make(map[string]bool)
+		Nprev[A] = true
+		changed := true
+		
+		for changed {
+			changed = false
+			Ncurrent := make(map[string]bool)
+			for B := range Nprev {
+				Ncurrent[B] = true
+				for _, rule := range g.ProductionRules {
+					if rule.Left == B && g.IsNonTerminal(rule.Right) && len(rule.Right) == 1 {
+						C := rule.Right
+						if !Nprev[C] {
+							Ncurrent[C] = true
+							changed = true
+						}
+					}
+				}
+			}
+			Nprev = Ncurrent
+		}
+		
+		Nsets[A] = Nprev
+	}
+	
+	newRulesMap := make(map[ProductionRule]bool)
+	
+	for _, rule := range g.ProductionRules {
+		if rule.Right == "" || (g.IsNonTerminal(rule.Right) && len(rule.Right) == 1) {
+			continue
+		}
+		
+		for A, N_A := range Nsets {
+			if N_A[rule.Left] {
+				newRule := ProductionRule{Left: A, Right: rule.Right}
+				newRulesMap[newRule] = true
+			}
+		}
+	}
+	
+	var newRules []ProductionRule
+	for rule := range newRulesMap {
+		newRules = append(newRules, rule)
+	}
+	
+	g.ProductionRules = newRules
+	g.rebuildProductionMap()
+	
+	return nil
+}
+
+
+	\end{lstlisting}
+	
+	
+		\begin{lstlisting}[caption=Тестирование модуля grammar, extendedchars=\true]
+package grammar
+
+import (
+"testing"
+)
+
+func TestEliminateLeftRecursion(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "",
+			input: `1
+			A
+			2
+			a b
+			2
+			A -> Aa
+			A -> b
+			A
+			`,
+			expected: `2
+			A A'
+			2
+			a b
+			3
+			A -> bA'
+			A' -> aA'
+			A' -> 
+			A
+			`,
+		},
+		{
+			name: "",
+			input: `2
+			A B
+			2
+			a b
+			3
+			A -> Ba
+			B -> Ab
+			B -> c
+			A
+			`,
+			expected: `3
+			A B B'
+			2
+			a b
+			4
+			A -> Ba
+			B -> cB'
+			B' -> abB'
+			B' -> 
+			A
+			`,
+		},
+		{
+			name: "",
+			input: `2
+			S A
+			3
+			a b c
+			6
+			S -> Sa
+			S -> Ab
+			S -> c
+			A -> Ac
+			A -> Sd
+			A -> 
+			S
+			`,
+			expected: `4
+			A A' S S'
+			3
+			a b c
+			9
+			A -> A'
+			A -> cS'dA'
+			A' -> bS'dA'
+			A' -> cA'
+			A' -> 
+			S -> AbS'
+			S -> cS'
+			S' -> aS'
+			S' -> 
+			S
+			`,
+		},
+		{
+			name: "",
+			input: `2
+			S A
+			2
+			a b
+			3
+			S -> Ab
+			A -> a
+			A -> b
+			S
+			`,
+			expected: `2
+			A S
+			2
+			a b
+			3
+			A -> a
+			A -> b
+			S -> Ab
+			S
+			`,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, err := NewGrammarFromString(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			
+			if err := g.EliminateLeftRecursion(); err != nil {
+				t.Fatal(err)
+			}
+			
+			result := g.ToString()
+			
+			if result != tt.expected {
+				t.Errorf("expected: %s, actual: %s", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestLeftFactor(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "",
+			input: `1
+			S
+			2
+			a b
+			3
+			S -> ab
+			S -> ac
+			S -> d
+			S
+			`,
+			expected: `2
+			S S'
+			2
+			a b
+			4
+			S -> aS'
+			S -> d
+			S' -> b
+			S' -> c
+			S
+			`,
+		},
+		{
+			name: "",
+			input: `1
+			A
+			2
+			a b
+			3
+			A -> abc
+			A -> ab
+			A -> a
+			A
+			`,
+			expected: `3
+			A A' A''
+			2
+			a b
+			5
+			A -> aA''
+			A' -> c
+			A' -> 
+			A'' -> bA'
+			A'' -> 
+			A
+			`,
+		},
+		{
+			name: "",
+			input: `1
+			S
+			3
+			a b c
+			4
+			S -> abc
+			S -> abd
+			S -> ac
+			S -> bd
+			S
+			`,
+			expected: `3
+			S S' S''
+			3
+			a b c
+			6
+			S -> aS''
+			S -> bd
+			S' -> c
+			S' -> d
+			S'' -> bS'
+			S'' -> c
+			S
+			`,
+		},
+		{
+			name: "",
+			input: `1
+			A
+			2
+			a b
+			2
+			A -> a
+			A -> b
+			A
+			`,
+			expected: `1
+			A
+			2
+			a b
+			2
+			A -> a
+			A -> b
+			A
+			`,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, err := NewGrammarFromString(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			
+			if err := g.LeftFactor(); err != nil {
+				t.Fatal(err)
+			}
+			
+			result := g.ToString()
+			if result != tt.expected {
+				t.Errorf("expected: %s, actual: %s", tt.expected, result)
+			}
+			
+		})
+	}
+}
+
+func TestEliminateChainRules(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "",
+			input: `2
+			S A
+			2
+			a b
+			3
+			S -> A
+			A -> a
+			A -> b
+			S
+			`,
+			expected: `2
+			A S
+			2
+			a b
+			4
+			A -> a
+			A -> b
+			S -> a
+			S -> b
+			S
+			`,
+		},
+		{
+			name: "",
+			input: `3
+			S A B
+			2
+			a b
+			5
+			S -> A
+			A -> B
+			B -> a
+			B -> b
+			A -> a
+			S
+			`,
+			expected: `3
+			A B S
+			2
+			a b
+			6
+			A -> a
+			A -> b
+			B -> a
+			B -> b
+			S -> a
+			S -> b
+			S
+			`,
+		},
+		{
+			name: "",
+			input: `2
+			S A
+			2
+			a b
+			3
+			S -> ab
+			A -> a
+			A -> b
+			S
+			`,
+			expected: `2
+			A S
+			2
+			a b
+			3
+			A -> a
+			A -> b
+			S -> ab
+			S
+			`,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, err := NewGrammarFromString(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			
+			if err := g.EliminateChainRules(); err != nil {
+				t.Fatal(err)
+			}
+			
+			result := g.ToString()
+			if result != tt.expected {
+				t.Errorf("ecpected: %s, actual: %s", tt.expected, result)
+			}
+		})
+	}
+}			
+		\end{lstlisting}
+		
+		
+		
+\end{appendices}
