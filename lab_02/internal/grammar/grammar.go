@@ -184,14 +184,14 @@ func (g *Grammar) EliminateLeftRecursion() error {
 						})
 					}
 					productionsToRemove = append(productionsToRemove, rule)
-					break
+					g.removeProductions(productionsToRemove)
+					g.ProductionRules = append(g.ProductionRules, productionsToAdd...)
+					g.rebuildProductionMap()
+					productionsToAdd = []ProductionRule{}
+					productionsToRemove = []ProductionRule{}
 				}
 			}
 		}
-
-		g.removeProductions(productionsToRemove)
-		g.ProductionRules = append(g.ProductionRules, productionsToAdd...)
-		g.rebuildProductionMap()
 
 		if err := g.eliminateImmediateLeftRecursion(Ai); err != nil {
 			return fmt.Errorf("ошибка устранения непосредственной левой рекурсии для %s: %v", Ai, err)

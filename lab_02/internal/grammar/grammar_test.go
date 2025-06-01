@@ -79,32 +79,32 @@ A
 `,
 		},
 		{
-			name: "Комбинированная рекурсия с ε-правилом",
-			input: `2
-S A
-3
-a b c
+			name: "Многоуровневая косвенная левая рекурсия",
+			input: `3
+S A B
+4
+a b c d
 6
 S -> Sa
 S -> Ab
-S -> c
 A -> Ac
-A -> Sd
-A -> ε
+A -> Bd
+B -> d
+B -> Sa
 S
 `,
-			expected: `4
-A A' S S'
-3
-a b c
+			expected: `6
+A A' B B' S S'
+4
+a b c d
 9
-A -> A'
-A -> cS'dA'
-A' -> bS'dA'
+A -> BdA'
 A' -> cA'
 A' -> ε
+B -> dB'
+B' -> dA'bS'aB'
+B' -> ε
 S -> AbS'
-S -> cS'
 S' -> aS'
 S' -> ε
 S
