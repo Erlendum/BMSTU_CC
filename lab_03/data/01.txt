@@ -1,0 +1,5 @@
+{
+    x = a & b !~c;
+    y = d ! ~b & true;
+    z = false
+}
