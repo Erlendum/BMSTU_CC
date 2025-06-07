@@ -80,30 +80,36 @@ A
 		},
 		{
 			name: "Многоуровневая косвенная левая рекурсия",
-			input: `3
-S A B
+			input: `4
+S A B C
 4
 a b c d
-6
+8
 S -> Sa
 S -> Ab
 A -> Ac
 A -> Bd
 B -> d
 B -> Sa
+B -> Cc
+C -> Sa
 S
 `,
-			expected: `6
-A A' B B' S S'
+			expected: `8
+A A' B B' C C' S S'
 4
 a b c d
-9
+13
 A -> BdA'
 A' -> cA'
 A' -> ε
+B -> CcB'
 B -> dB'
 B' -> dA'bS'aB'
 B' -> ε
+C -> dB'dA'bS'aC'
+C' -> cB'dA'bS'aC'
+C' -> ε
 S -> AbS'
 S' -> aS'
 S' -> ε

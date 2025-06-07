@@ -165,16 +165,13 @@ func (g *Grammar) EliminateLeftRecursion() error {
 	orderedNT := g.NonTerminals
 
 	for i, Ai := range orderedNT {
-		var productionsToAdd []ProductionRule
-		var productionsToRemove []ProductionRule
-
-		for _, rule := range g.ProductionRules {
-			if rule.Left != Ai {
-				continue
-			}
-			for j := 0; j < i; j++ {
-				Aj := orderedNT[j]
-				if strings.HasPrefix(rule.Right, Aj) {
+		for j := 0; j < i; j++ {
+			var productionsToAdd []ProductionRule
+			var productionsToRemove []ProductionRule
+			Ai := orderedNT[i]
+			Aj := orderedNT[j]
+			for _, rule := range g.ProductionRules {
+				if strings.HasPrefix(rule.Left, Ai) && strings.HasPrefix(rule.Right, Aj) {
 					gamma := rule.Right[len(Aj):]
 					for _, ajRule := range g.GetProductionsFor(Aj) {
 						newRight := ajRule + gamma
@@ -192,7 +189,6 @@ func (g *Grammar) EliminateLeftRecursion() error {
 				}
 			}
 		}
-
 		if err := g.eliminateImmediateLeftRecursion(Ai); err != nil {
 			return fmt.Errorf("ошибка устранения непосредственной левой рекурсии для %s: %v", Ai, err)
 		}
